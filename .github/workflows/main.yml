@@ -11,7 +11,6 @@ jobs:
     steps:
       - name: Configure Core RDP Settings
         run: |
-          # Enable Remote Desktop and disable Network Level Authentication (if needed)
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
                              -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
@@ -19,21 +18,16 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
                              -Name "SecurityLayer" -Value 0 -Force
 
-          # Remove any existing rule with the same name to avoid duplication
           netsh advfirewall firewall delete rule name="RDP-Tailscale"
-          
-          # For testing, allow any incoming connection on port 3389
           netsh advfirewall firewall add rule name="RDP-Tailscale" `
             dir=in action=allow protocol=TCP localport=3389
 
-          # (Optional) Restart the Remote Desktop service to ensure changes take effect
           Restart-Service -Name TermService -Force
 
-      - name: Create RDP User with Random Password
+      - name: Create RDP User with Custom Password
         run: |
-          # 生成8位随机密码（大小写字母+数字）
-          $chars = ([char[]](65..90)) + ([char[]](97..122)) + ([char[]](48..57))
-          $password = -join ($chars | Get-Random -Count 8)
+          # 生成固定前缀 aa + 6位随机数字的密码
+          $password = "aa" + (Get-Random -Minimum 100000 -Maximum 999999).ToString()
           
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
@@ -41,11 +35,22 @@ jobs:
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
           
           echo "RDP_CREDS=User: RDP | Password: $password" >> $env:GITHUB_ENV
-          
-          if (-not (Get-LocalUser -Name "RDP")) {
-              Write-Error "User creation failed"
-              exit 1
-          }
+
+      - name: Install Chinese Language Pack
+        run: |
+          Write-Host "Installing Chinese Language Pack..."
+          Install-Language zh-CN
+          Set-WinSystemLocale zh-CN
+          Set-WinUserLanguageList zh-CN -Force
+          Set-WinDefaultInputMethodOverride -InputTip "0804:00000804"
+
+      - name: Install QQ Pinyin Input Method
+        run: |
+          Write-Host "Updating winget sources..."
+          winget source update
+          Write-Host "Installing QQ Pinyin Input Method..."
+          winget install --id Tencent.QQPinyin -e --silent --accept-package-agreements --accept-source-agreements
+          Write-Host "QQ Pinyin installation completed."
 
       - name: Install Tailscale
         run: |
@@ -58,10 +63,8 @@ jobs:
 
       - name: Establish Tailscale Connection
         run: |
-          # Bring up Tailscale with the provided auth key, set a unique hostname, and advertise as exit node
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID --advertise-exit-node
           
-          # Wait for Tailscale to assign an IP
           $tsIP = $null
           $retries = 0
           while (-not $tsIP -and $retries -lt 10) {
@@ -79,8 +82,6 @@ jobs:
       - name: Verify RDP Accessibility
         run: |
           Write-Host "Tailscale IP: $env:TAILSCALE_IP"
-          
-          # Test connectivity using Test-NetConnection against the Tailscale IP on port 3389
           $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
           if (-not $testResult.TcpTestSucceeded) {
               Write-Error "TCP connection to RDP port 3389 failed"
@@ -96,7 +97,6 @@ jobs:
           Write-Host "Password: $(echo $env:RDP_CREDS)"
           Write-Host "==================`n"
           
-          # Keep runner active indefinitely (or until manually cancelled)
           while ($true) {
               Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
               Start-Sleep -Seconds 300
