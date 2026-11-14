@@ -26,7 +26,7 @@ jobs:
 
       - name: Create RDP User with Custom Password
         run: |
-          # 1. 关闭系统强密码策略（因为是临时服务器，不需要那么复杂）
+          # 1. 关闭系统强密码策略
           net accounts /minpwlen:0
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Services\Netlogon\Parameters' -Name "RequireSignOrSeal" -Value 0 -Force
           secedit /export /cfg c:\secpol.cfg
@@ -45,25 +45,10 @@ jobs:
           
           echo "RDP_CREDS=User: RDP | Password: $password" >> $env:GITHUB_ENV
 
-      - name: Install Chinese Language Pack
-        run: |
-          Write-Host "Installing Chinese Language Pack..."
-          Install-Language zh-CN
-          Set-WinSystemLocale zh-CN
-          Set-WinUserLanguageList zh-CN -Force
-          Set-WinDefaultInputMethodOverride -InputTip "0804:00000804"
-
-      - name: Install QQ Pinyin Input Method
-        run: |
-          Write-Host "Updating winget sources..."
-          winget source update
-          Write-Host "Installing QQ Pinyin Input Method..."
-          winget install --id Tencent.QQPinyin -e --silent --accept-package-agreements --accept-source-agreements
-          Write-Host "QQ Pinyin installation completed."
-
       - name: Install Tailscale
         run: |
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
+          # 更新为最新版 1.84.2
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.84.2-amd64.msi"
           $installerPath = "$env:TEMP\tailscale.msi"
           
           Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
