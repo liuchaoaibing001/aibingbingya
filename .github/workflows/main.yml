@@ -29,9 +29,12 @@ jobs:
           # (Optional) Restart the Remote Desktop service to ensure changes take effect
           Restart-Service -Name TermService -Force
 
-      - name: Create RDP User with Custom Password
+      - name: Create RDP User with Random Password
         run: |
-          $password = "mima56789."
+          # 生成8位随机密码（大小写字母+数字）
+          $chars = ([char[]](65..90)) + ([char[]](97..122)) + ([char[]](48..57))
+          $password = -join ($chars | Get-Random -Count 8)
+          
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
           Add-LocalGroupMember -Group "Administrators" -Member "RDP"
@@ -55,8 +58,8 @@ jobs:
 
       - name: Establish Tailscale Connection
         run: |
-          # Bring up Tailscale with the provided auth key and set a unique hostname
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID
+          # Bring up Tailscale with the provided auth key, set a unique hostname, and advertise as exit node
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID --advertise-exit-node
           
           # Wait for Tailscale to assign an IP
           $tsIP = $null
