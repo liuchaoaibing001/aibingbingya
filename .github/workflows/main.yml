@@ -26,11 +26,20 @@ jobs:
 
       - name: Create RDP User with Custom Password
         run: |
-          # 生成固定前缀 aa + 6位随机数字的密码
+          # 1. 关闭系统强密码策略（因为是临时服务器，不需要那么复杂）
+          net accounts /minpwlen:0
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Services\Netlogon\Parameters' -Name "RequireSignOrSeal" -Value 0 -Force
+          secedit /export /cfg c:\secpol.cfg
+          (Get-Content c:\secpol.cfg).replace("PasswordComplexity = 1", "PasswordComplexity = 0") | Set-Content c:\secpol.cfg
+          secedit /configure /db c:\windows\security\local.sdb /cfg c:\secpol.cfg /areas SECURITYPOLICY
+          Remove-Item -Force c:\secpol.cfg
+          
+          # 2. 生成固定前缀 aa + 6位随机数字的密码
           $password = "aa" + (Get-Random -Minimum 100000 -Maximum 999999).ToString()
           
+          # 3. 创建用户并加入组
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-          New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
+          New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires -PasswordNeverExpires
           Add-LocalGroupMember -Group "Administrators" -Member "RDP"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
           
